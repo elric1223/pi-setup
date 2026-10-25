@@ -145,6 +145,17 @@ export function registerCompactionHook(pi: ExtensionAPI, runtime: Runtime): void
 				snap = snapCutoff(branch, firstKeptEntryId, tailTokens);
 			}
 
+			// A snapped tail far larger than the target means observation coverage lags the tip, so this
+			// compaction leaves a high floor and can re-fire within minutes (seen when OM is enabled
+			// mid-session over a large unobserved backlog). Warn rather than refuse: refusing would leave
+			// an already-over-threshold context uncompacted.
+			if (hasUI && snap.tail !== undefined && snap.tail > tailTokens * 2) {
+				ctx.ui.notify(
+					`om: compaction tail is ${snap.tail.toLocaleString()} tokens (target ${tailTokens.toLocaleString()}) — observation coverage lags the tip, so more history than usual is kept verbatim. Expect another compaction soon.`,
+					"warning",
+				);
+			}
+
 			const snapped = snap.firstKeptId;
 			const projection = buildCompactionProjection(branch, snapped);
 			// Phase B: render the long-term tier live from disk, regenerated each compaction
