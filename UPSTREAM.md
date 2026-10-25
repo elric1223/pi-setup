@@ -2,6 +2,7 @@
 
 | Local path | Upstream | Commit/version | Modified locally? |
 |---|---|---|---|
+| `extensions/custom-header.ts` | amosblomqvist/pi-config (pattern only) | cloned 2026-10-25 | **yes** — rewritten: upstream's `Π` logo replaced by a locally designed owl-in-omega braille mark with a hardwired sage/olive/gold palette; see README "Custom header" |
 | `extensions/ask-user-question.ts` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
 | `extensions/prompt-snippets/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
 | `extensions/web-fetch/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |

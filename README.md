@@ -39,16 +39,46 @@ it, plain `sync.sh` leaves the existing one alone.
 | `settings.json` | pi settings | model, changelog version |
 | `extensions/ask-user-question.ts` | the agent asks a question in a UI popup | |
 | `extensions/prompt-snippets/` | toggle reusable rules onto a message (`alt+s`) | |
+| `extensions/custom-header.ts` | replaces the startup header with the Athena owl-in-omega mark | **local design**, generated from `design/` — see below |
 | `extensions/web-fetch/` | URL → clean markdown | |
 | `web-search.json` | which model `web_search` uses | see *Web search* below |
 | `extensions/bash-guard/` | prompts on risky bash; hard-blocks catastrophic bash in subagents | **local changes, see below** |
 | `extensions/browser/` | Playwright headless Chromium, off until `/browser on` | |
 | `extensions/observational-memory/` | tiered session memory: parallel observers → ledger → deterministic compaction; a consolidator writes `<project>/.memory/<sessionId>/` | **off by default**, `/om on` per session. **local patch, see below** |
 | `extensions/subagents/` | async subagents: spawn pi children in herdr/tmux panes, steer results back (`subagent`, `subagent_message`, `ask_question`) | **herdr port, see below** |
+| `design/` | the art: `athena_owl.py` (draws it), `emit-header.py` (regenerates the extension), `athena_preview.py` (renders it with colours) | not synced — design-time only |
 | `skills/analyze-sessions/` | cost / prompt / session queries over `~/.pi/agent/sessions` | stdlib Python |
 | `skills/pdf-reader/` | read PDFs | `uv` venv |
 | `skills/youtube-transcript/` | YouTube title + transcript | needs `yt-dlp`, `ffmpeg` |
 | `skills/web-debug/` | playbook for driving the browser tools | |
+
+## Custom header
+
+`extensions/custom-header.ts` replaces pi's built-in startup header. This one is **not a copy of
+upstream's** — amos's version paints a large box-drawing `Π` in theme colours, and that file was
+read as the pattern, not taken. The installed mark is a locally drawn one: an owl with pi legs
+inside an olive wreath bent into an omega, in braille (30 columns × 13 rows), with
+`☙Ω❧ pi · γλαυκῶπις` beneath it.
+
+The palette is hardwired sRGB (sage wreath, darker olive owl, gold eyes and beak) rather than theme
+tokens, so it **does not follow light/dark theme changes** — on a light background the sage reads
+poorly. That is the design, not an accident.
+
+It costs you the built-in header's keybinding hints and onboarding line. `/builtin-header` restores
+the built-in header for the session; delete the file and `/reload` to restore it permanently.
+
+The `ART` and `LABELS` arrays are **generated** — do not hand-edit them. Edit `design/athena_owl.py`
+(the pixel-grid drawing), then run:
+
+```bash
+python3 design/emit-header.py     # rewrites extensions/custom-header.ts
+```
+
+and `/reload` inside pi. `design/athena_preview.py` renders the same mark with its colours in a
+terminal without touching pi, which is the fast loop for tweaking the art. `LABELS` is parallel to
+`ART` and marks each cell `1` wreath / `2` owl body / `3` face / `0` blank; where a cell mixes groups,
+body wins over face and face over wreath — that priority comes from the generator's `max()` key and
+is not the obvious order.
 
 ## Local changes to upstream
 
