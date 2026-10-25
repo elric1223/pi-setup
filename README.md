@@ -130,6 +130,39 @@ node --test --test-concurrency=1 test/integration/surface.test.ts   # run inside
 Not done: sibling subagents talking to **each other**. Only child→parent exists
 (`ask_question` / `subagent_message`).
 
+### Cross-harness: the Claude Code path (verified 2026-10-25)
+
+Upstream's fork can run a subagent through the **Claude Code CLI** instead of pi, selected by an
+extra frontmatter field. `agents/claude-worker.md` is the first agent here to use it:
+
+```yaml
+cli: claude
+```
+
+That takes the branch at `pi-extension/subagents/index.ts:1246`, which launches
+`claude --dangerously-skip-permissions --plugin-dir <…/subagents/plugin> [--model …] <task>` in the
+herdr pane. Completion is detected by the bundled Claude **Stop-hook plugin**
+(`plugin/hooks/on-stop.sh`), which writes a sentinel only when the transcript contains exactly one
+human message — i.e. the run was genuinely autonomous. Three independent observations confirmed it
+end to end: the pane was created and closed by the parent, the child really ran Claude Code (herdr
+reported it as `kind: claude` with a live session id, and a marker file it wrote existed on disk),
+and the parent received a typed result.
+
+Four things to know before adding more `cli: claude` agents:
+
+- **`model:` is passed verbatim to `claude --model`**, which takes a Claude alias (`opus`, `sonnet`)
+  or a full Claude model name — **not** an OpenRouter id. The other bundled agents' `model:` values
+  are OpenRouter ids and would be wrong here. Omit the field to inherit Claude's own default.
+- **pi's tool allowlist does not apply.** `tools:` is used only on the pi path, and upstream launches
+  Claude with `--dangerously-skip-permissions`, so a `cli: claude` agent has *more* latitude than a
+  pi agent with a restricted `tools:` list, and the field would be silently ignored.
+- **The child's cwd must be a trusted Claude Code project.** The extension launches Claude
+  *interactively* (no `-p`), and Claude only skips its workspace-trust dialog in non-interactive
+  mode — so an untrusted directory stalls the spawn on a dialog. `~/.claude.json`'s
+  `hasTrustDialogAccepted` per project is the field that decides this.
+- **The child's Claude transcript is copied** into `~/.pi/agent/sessions/claude-code/`, and its id is
+  returned as `claudeSessionId` — so each cross-harness child leaves a durable, resumable record.
+
 ## Web search
 
 `web_search` comes from the **`pi-web-search` package**, not an extension folder:
