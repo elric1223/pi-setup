@@ -43,6 +43,7 @@ it, plain `sync.sh` leaves the existing one alone.
 | `extensions/web-fetch/` | URL → clean markdown | |
 | `extensions/bash-guard/` | prompts on risky bash; hard-blocks catastrophic bash in subagents | **local changes, see below** |
 | `extensions/browser/` | Playwright headless Chromium, off until `/browser on` | |
+| `extensions/observational-memory/` | tiered session memory: parallel observers → ledger → deterministic compaction; a consolidator writes `<project>/.memory/<sessionId>/` | **off by default**, `/om on` per session. **local patch, see below** |
 | `skills/analyze-sessions/` | cost / prompt / session queries over `~/.pi/agent/sessions` | stdlib Python |
 | `skills/pdf-reader/` | read PDFs | `uv` venv |
 | `skills/youtube-transcript/` | YouTube title + transcript | needs `yt-dlp`, `ffmpeg` |
@@ -67,11 +68,37 @@ machine's workflow while keeping the guard meaningful:
 The subagent hard-block list is unchanged — that half is the valuable one, since spawned
 subagents have no UI to prompt at.
 
+## observational-memory configuration
+
+Configured in `settings.json` under `observational-memory`. The workers are chosen for **tool
+reliability, not price** — the observer's only output is repeated `record_observations` calls, and
+the consolidator drives `read`/`write`/`edit`/`grep` over `.memory/`. A worker with weak tool
+calling fails silently: the chunk is simply never remembered.
+
+| Slot | Model | Cost |
+|---|---|---|
+| `observer` | `nvidia/nemotron-3.5-lightning:free` | free |
+| `observerFallback` | `inclusionai/ling-3.0-flash` | $0.021 / $0.063 per M tokens |
+| `consolidator` | `deepseek/deepseek-v4-flash-0731` | $0.044 / $0.133 per M tokens |
+
+**Local patch (`observerFallback` does not exist upstream).** A free SKU that 404s or 429s would
+otherwise lose that slice of conversation silently — the observer's failure path writes an *empty
+but valid* result file, so the ledger cannot tell "nothing worth recording" from "the model never
+ran". `src/config.ts` gains an optional `models.observerFallback`, and `src/hooks/observer-trigger.ts`
+tries it once when the primary exits non-zero (an empty result from a *successful* run is not
+retried — that is a legitimately empty chunk, and retrying would double the spend). A toast
+names both models when the switch happens.
+
+Verified 2026-10-25 by driving the worker directly: the free model emitted 5 well-formed
+observations at `$0`, the fallback model emitted 6 at `$0.00013`, an invalid model id exited `1`
+(proving the signal the retry keys on), and the repo's own suite still passes (`98 passed`,
+`tsc --noEmit` clean). **Not yet exercised:** the retry firing inside a live session — that needs a
+real >10k-token session with `/om on`.
+
 ## Not here (deliberately)
 
 - `pi-dictate` — Voxtype already does system-wide dictation on this machine.
 - `pi-interactive-subagents` — **pinned to a later session**, and it will be ported to herdr
   panes rather than used tmux-only. Running pi inside tmux inside a herdr pane works today as an
   interim.
-- `pi-observational-memory` — next phase; needs a model choice for its two workers first.
 - `deprecated/filechanges` — `git diff` already covers reviewing what pi changed.

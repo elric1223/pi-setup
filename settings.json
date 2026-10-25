@@ -1,6 +1,25 @@
 {
   "lastChangelogVersion": "1.4.0",
   "defaultProvider": "openrouter",
-  "defaultModel": "moonshotai/kimi-k2.6",
-  "hideThinkingBlock": true
+  "defaultModel": "deepseek/deepseek-v4.1-flash",
+  "hideThinkingBlock": true,
+  "observational-memory": {
+    "models": {
+      "observer": {
+        "provider": "openrouter",
+        "id": "nvidia/nemotron-3.5-lightning:free",
+        "thinking": "low"
+      },
+      "observerFallback": {
+        "provider": "openrouter",
+        "id": "inclusionai/ling-3.0-flash",
+        "thinking": "low"
+      },
+      "consolidator": {
+        "provider": "openrouter",
+        "id": "deepseek/deepseek-v4-flash-0731",
+        "thinking": "medium"
+      }
+    }
+  }
 }
