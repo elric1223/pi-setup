@@ -1,0 +1,24 @@
+# Where each piece came from
+
+| Local path | Upstream | Commit/version | Modified locally? |
+|---|---|---|---|
+| `extensions/ask-user-question.ts` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `extensions/prompt-snippets/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `extensions/web-search/` | amosblomqvist/pi-config | cloned 2026-10-25 | no (credentials excluded) |
+| `extensions/web-fetch/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `extensions/bash-guard/` | amosblomqvist/pi-config | cloned 2026-10-25 | **yes** — see README "Local changes to upstream" |
+| `extensions/browser/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `skills/analyze-sessions/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `skills/pdf-reader/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `skills/web-debug/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+| `skills/youtube-transcript/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
+
+Upstream is a "copy the pieces you want" repo, not a package — it has no releases to track.
+Two sibling repos were read and deliberately **not** vendored here:
+`pi-interactive-subagents` (tmux-only; pinned for a herdr port) and
+`pi-observational-memory` (next phase).
+
+pi version this was verified against: **v1.4.0**. Upstream's subagents repo still declares
+`@mariozechner/*` v0.65 peer deps; pi 1.4.0 aliases the old package scope and
+`@sinclair/typebox` onto its bundled modules (`dist/core/extensions/virtual-modules.js`), which is
+why both generations of extension load.

@@ -1,0 +1,8 @@
+# Installed per machine by sync.sh, never tracked
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+# Runtime browser profile (cookies, localStorage) and the web-search key
+extensions/browser/.profile/
+extensions/web-search/auth.json
