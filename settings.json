@@ -21,5 +21,8 @@
         "thinking": "medium"
       }
     }
-  }
+  },
+  "packages": [
+    "npm:pi-web-search"
+  ]
 }

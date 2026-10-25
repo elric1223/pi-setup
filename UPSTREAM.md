@@ -4,7 +4,6 @@
 |---|---|---|---|
 | `extensions/ask-user-question.ts` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
 | `extensions/prompt-snippets/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
-| `extensions/web-search/` | amosblomqvist/pi-config | cloned 2026-10-25 | no (credentials excluded) |
 | `extensions/web-fetch/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
 | `extensions/bash-guard/` | amosblomqvist/pi-config | cloned 2026-10-25 | **yes** — see README "Local changes to upstream" |
 | `extensions/browser/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
@@ -17,6 +16,9 @@
 Upstream is a "copy the pieces you want" repo, not a package — it has no releases to track.
 `pi-interactive-subagents` was read and deliberately **not** vendored here — it is tmux-only and
 will be ported to herdr panes in a later session.
+
+Removed 2026-10-25: `extensions/web-search/` (amosblomqvist) — Google closed the Custom Search
+JSON API to new customers. Replaced by the `pi-web-search` package + `web-search.json`.
 
 pi version this was verified against: **v1.4.0**. Upstream's subagents repo still declares
 `@mariozechner/*` v0.65 peer deps; pi 1.4.0 aliases the old package scope and

@@ -16,6 +16,19 @@ rsync -a --exclude node_modules --exclude .profile --exclude auth.json \
 rsync -a --exclude .venv --exclude __pycache__ "$REPO/skills/" "$AGENT/skills/"
 cp "$REPO/AGENTS.md" "$AGENT/AGENTS.md"
 
+# web-search model selection (only meaningful with the pi-web-search package below)
+if [ -f "$REPO/web-search.json" ]; then
+	cp "$REPO/web-search.json" "$AGENT/web-search.json"
+	echo "web-search.json: copied"
+fi
+
+# pi-web-search is a package, so it is declared in settings.json, not copied as a folder.
+# Installing here keeps a fresh machine working without a manual step.
+if ! pi list 2>/dev/null | grep -q "pi-web-search"; then
+	echo "pi install: npm:pi-web-search"
+	pi install npm:pi-web-search
+fi
+
 # settings.json holds the model choice, which is per machine. Copy only on request.
 if [ "${PI_SYNC_SETTINGS:-0}" = "1" ]; then
 	cp "$REPO/settings.json" "$AGENT/settings.json"
@@ -53,10 +66,8 @@ fi
 
 cat <<'MANUAL'
 Manual steps this script cannot do:
-  1. web-search needs Google Custom Search credentials — set GOOGLE_SEARCH_API_KEY and
-     GOOGLE_CSE_ID, or create ~/.pi/agent/extensions/web-search/auth.json from
-     auth.example.json. Kept out of git on purpose.
-  2. pi auth: /login openrouter (writes ~/.pi/agent/auth.json).
-  3. herdr manages ~/.pi/agent/extensions/herdr-agent-state.ts itself.
+  1. pi auth: /login openrouter (writes ~/.pi/agent/auth.json). web_search uses a model from
+     this account, so it needs no search API key of its own.
+  2. herdr manages ~/.pi/agent/extensions/herdr-agent-state.ts itself.
 Then run /reload inside pi.
 MANUAL

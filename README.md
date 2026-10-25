@@ -16,8 +16,8 @@ git clone <this repo> ~/Documents/pi-setup
 `sync.sh` copies into `~/.pi/agent`, installs extension npm deps, creates the `pdf-reader` venv
 with `uv`, and downloads the Playwright browser **with the locally installed
 `playwright-core`** (`npx playwright install` fetches the latest and silently mismatches —
-that cost a debugging round on 2026-10-25). It prints the steps it cannot automate: pi login,
-the Google Custom Search key for `web-search`, and herdr's own extension file.
+that cost a debugging round on 2026-10-25). It prints the steps it cannot automate: pi login, and herdr's own extension file. It also installs
+the `pi-web-search` package if it is missing.
 
 It never touches:
 
@@ -39,8 +39,8 @@ it, plain `sync.sh` leaves the existing one alone.
 | `settings.json` | pi settings | model, changelog version |
 | `extensions/ask-user-question.ts` | the agent asks a question in a UI popup | |
 | `extensions/prompt-snippets/` | toggle reusable rules onto a message (`alt+s`) | |
-| `extensions/web-search/` | Google Custom Search | needs credentials, not in git |
 | `extensions/web-fetch/` | URL → clean markdown | |
+| `web-search.json` | which model `web_search` uses | see *Web search* below |
 | `extensions/bash-guard/` | prompts on risky bash; hard-blocks catastrophic bash in subagents | **local changes, see below** |
 | `extensions/browser/` | Playwright headless Chromium, off until `/browser on` | |
 | `extensions/observational-memory/` | tiered session memory: parallel observers → ledger → deterministic compaction; a consolidator writes `<project>/.memory/<sessionId>/` | **off by default**, `/om on` per session. **local patch, see below** |
@@ -67,6 +67,38 @@ machine's workflow while keeping the guard meaningful:
 
 The subagent hard-block list is unchanged — that half is the valuable one, since spawned
 subagents have no UI to prompt at.
+
+## Web search
+
+`web_search` comes from the **`pi-web-search` package**, not an extension folder:
+`pi install npm:pi-web-search` (declared under `packages` in `settings.json`). It routes search
+through the *model provider's* native search API, so it needs a supported model rather than an
+API key of its own — the tool name stays `web_search`, which matters because the bundled
+`researcher` subagent whitelists exactly that name.
+
+`web-search.json` picks a dedicated search model, because the conversation default
+(`openrouter/deepseek-v4.1-flash`) is served over `openai-completions` and has no native search:
+
+```json
+{ "provider": "openrouter", "model": "anthropic/claude-haiku-4.5" }
+```
+
+Supported dialects: `anthropic-messages`, `openai-responses`, `deepseek`, `google-generative-ai`,
+`xai`, `ollama`. On OpenRouter that means the Anthropic-served models — verified working
+(2026-10-25) with `anthropic/claude-haiku-4.5`, which returned a live result. Without a supported
+model the tool returns a clear error listing the configured ones; it never silently switches models.
+
+**Google Custom Search is dead.** The previous extension is gone because Google's docs state plainly:
+*"The Custom Search JSON API is closed to new customers"* (existing customers until 2027-01-01).
+A new GCP project gets `403 "This project does not have the access to Custom Search JSON API"`
+no matter how correctly the key, the `cx` and the API enablement are set. Umar's key and `cx` are
+still sitting in GCP and can be deleted.
+
+Alternatives researched but not taken: **`pi-web-access`** (801K downloads/month) does zero-config
+Exa search with no key at all, plus PDF extraction, YouTube understanding, GitHub cloning and an MCP
+server — at 9.8 MB and 9 dependencies, and it would replace `web-fetch` too. OpenRouter's own
+`openrouter:web_search` server tool is the cheapest per search ($0.007 Exa, or native passthrough)
+but is beta and would need a ~100-line extension.
 
 ## observational-memory configuration
 
