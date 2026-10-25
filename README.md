@@ -44,6 +44,7 @@ it, plain `sync.sh` leaves the existing one alone.
 | `extensions/bash-guard/` | prompts on risky bash; hard-blocks catastrophic bash in subagents | **local changes, see below** |
 | `extensions/browser/` | Playwright headless Chromium, off until `/browser on` | |
 | `extensions/observational-memory/` | tiered session memory: parallel observers → ledger → deterministic compaction; a consolidator writes `<project>/.memory/<sessionId>/` | **off by default**, `/om on` per session. **local patch, see below** |
+| `extensions/subagents/` | async subagents: spawn pi children in herdr/tmux panes, steer results back (`subagent`, `subagent_message`, `ask_question`) | **herdr port, see below** |
 | `skills/analyze-sessions/` | cost / prompt / session queries over `~/.pi/agent/sessions` | stdlib Python |
 | `skills/pdf-reader/` | read PDFs | `uv` venv |
 | `skills/youtube-transcript/` | YouTube title + transcript | needs `yt-dlp`, `ffmpeg` |
@@ -67,6 +68,37 @@ machine's workflow while keeping the guard meaningful:
 
 The subagent hard-block list is unchanged — that half is the valuable one, since spawned
 subagents have no UI to prompt at.
+
+## Subagents (herdr port)
+
+`extensions/subagents/` is a fork of `amosblomqvist/pi-interactive-subagents` v3.7.2, which was
+tmux-only. The multiplexer calls are isolated in `pi-extension/subagents/surface.ts`, so the port
+added a herdr backend beside the tmux one rather than replacing it:
+
+- **The backend is picked at runtime** — herdr when `HERDR_ENV=1` and the `herdr` binary are
+  present, tmux when `$TMUX` is set, `PI_SUBAGENT_MUX=herdr|tmux` to force one. herdr wins when
+  both are present.
+- **Splits target the widest pane in the tab** (ties → rightmost) instead of the parent pane.
+  herdr halves the split target on every split and has no `select-layout` equivalent, so
+  repeatedly splitting the parent would shrink it to nothing. Splitting the widest pane keeps the
+  columns even, and herdr redistributes space itself when a pane closes.
+- **herdr only splits right or down**, so `left`/`up` are treated as their mirror.
+- **New panes are renamed** to the subagent name (`herdr pane rename`) — display-only, best-effort.
+- The tmux path is unchanged, including the `even-horizontal` rebalance (`SUBAGENT_TMUX_LAYOUT`).
+
+Verified 2026-10-25 inside a headless herdr session: the repo's surface suite (7/7) and the first
+end-to-end lifecycle test — outer pi → subagent pi in a herdr pane → marker file written → result
+steered back — both pass. `sync.sh` does not install this fork's deps; to run its tests:
+
+```bash
+cd extensions/subagents
+npm install        # devDependencies only — nothing is needed at runtime
+npm test           # unit
+node --test --test-concurrency=1 test/integration/surface.test.ts   # run inside herdr or tmux
+```
+
+Not done: sibling subagents talking to **each other**. Only child→parent exists
+(`ask_question` / `subagent_message`).
 
 ## Web search
 

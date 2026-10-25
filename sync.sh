@@ -37,14 +37,23 @@ else
 	echo "settings.json: left alone (set PI_SYNC_SETTINGS=1 to copy)"
 fi
 
-# Extension-local deps
+# Extension-local deps. Only packages with runtime `dependencies` need
+# node_modules; vendored forks that carry devDependencies for their own test
+# suites (observational-memory, subagents) would otherwise pull a whole
+# toolchain into ~/.pi/agent for nothing.
 for pkg in "$AGENT"/extensions/*/package.json; do
 	[ -e "$pkg" ] || continue
 	dir=$(dirname "$pkg")
-	if [ ! -d "$dir/node_modules" ]; then
-		echo "npm install: $dir"
-		(cd "$dir" && npm install --silent)
+	if [ -d "$dir/node_modules" ]; then
+		continue
 	fi
+	deps=$(jq -r '.dependencies // {} | length' "$pkg" 2>/dev/null || echo 0)
+	if [ "$deps" = "0" ]; then
+		echo "deps: none, skipping npm install: $dir"
+		continue
+	fi
+	echo "npm install: $dir"
+	(cd "$dir" && npm install --silent)
 done
 
 # pdf-reader needs its own venv (uv, not pip)
