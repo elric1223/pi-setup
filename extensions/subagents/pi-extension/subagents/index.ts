@@ -139,6 +139,12 @@ interface AgentDefaults {
    * net against a child that never signals completion, not a working limit.
    */
   timeoutSeconds?: number;
+  /**
+   * Permission posture for a `cli: claude` child, from `claude-permissions`.
+   * `readonly` replaces bypass mode with an explicit allowlist (read tools plus
+   * read-only git). Only meaningful on the claude path.
+   */
+  claudePermissions?: string;
   body?: string;
   disableModelInvocation?: boolean;
 }
@@ -319,6 +325,7 @@ function parseAgentDefinition(content: string, fallbackName: string): AgentDefin
     cwd: getFrontmatterValue(frontmatter, "cwd"),
     cli: getFrontmatterValue(frontmatter, "cli"),
     timeoutSeconds: parseOptionalNumber(getFrontmatterValue(frontmatter, "timeout-seconds")),
+    claudePermissions: getFrontmatterValue(frontmatter, "claude-permissions"),
     body: body || undefined,
     disableModelInvocation:
       getFrontmatterValue(frontmatter, "disable-model-invocation")?.toLowerCase() === "true",
@@ -1266,13 +1273,52 @@ async function launchSubagent(
     : `${roleBlock}\n\n${modeHint}\n\n${params.task}\n\n${summaryInstruction}`;
   // ── Claude Code CLI path ──
   if (agentDefs?.cli === "claude") {
+    // `tools:` and `subagent_agents:` are pi-path concepts that this branch used
+    // to ignore in silence. They cannot be forwarded as-is: pi tool names are not
+    // Claude Code's, and Claude Code accepts an unknown name without complaint —
+    // `--tools=read,grep` produces a child with NO built-in tools at all
+    // (verified 2026-10-25). Fail loudly rather than spawn a broken child.
+    if (effectiveTools || grantSpawning) {
+      if (!surfacePreCreated) {
+        try {
+          closeSurface(surface);
+        } catch {}
+      }
+      throw new Error(
+        `agent "${params.agent}": tools: and subagent_agents: are not supported with cli: claude. ` +
+          `Use claude-permissions: readonly to restrict a Claude child, or remove the field.`,
+      );
+    }
+
     const sentinelFile = `/tmp/pi-claude-${id}-done`;
     const pluginDir = join(SUBAGENTS_DIR, "plugin");
 
     const cmdParts: string[] = [];
     cmdParts.push(`PI_CLAUDE_SENTINEL=${shellEscape(sentinelFile)}`);
     cmdParts.push("claude");
-    cmdParts.push("--dangerously-skip-permissions");
+
+    // Permission posture. `readonly` replaces bypass mode with an explicit
+    // allowlist. Verified against Claude Code 2.1.310 on 2026-10-25: `git log`
+    // runs, `echo x > f` is denied and writes nothing.
+    //
+    // `--strict-mcp-config` is load-bearing, not tidiness: `--tools` restricts
+    // only the built-in set, so without it a child still carries every MCP
+    // connector tool — a "read-only" reviewer could send mail and delete
+    // calendar events. Every variadic flag here uses `=` so it cannot swallow
+    // the trailing prompt (which is how `--tools Read,Grep <prompt>` fails).
+    if (agentDefs.claudePermissions === "readonly") {
+      cmdParts.push("--permission-mode", "dontAsk");
+      cmdParts.push("--strict-mcp-config");
+      cmdParts.push("--tools=Read,Grep,Glob,Bash");
+      cmdParts.push(
+        shellEscape(
+          "--allowedTools=Read,Grep,Glob," +
+            "Bash(git diff:*),Bash(git log:*),Bash(git show:*),Bash(git status:*)",
+        ),
+      );
+    } else {
+      cmdParts.push("--dangerously-skip-permissions");
+    }
 
     if (existsSync(pluginDir)) {
       cmdParts.push("--plugin-dir", shellEscape(pluginDir));
