@@ -3,6 +3,14 @@
 My [pi](https://pi.dev) agent configuration, kept in git so the same setup can be reproduced on
 another machine (work computer) rather than re-assembled by hand.
 
+> **Setting this up on a fresh machine? Read [`SETUP.md`](SETUP.md) instead of this file.** It has
+> the requirements, the order of operations, the herdr configuration that subagent spawning depends
+> on, and the traps — including several that fail silently. This file is the orientation document:
+> what each extension is, where it came from, and what was changed locally.
+>
+> Short version, if you already know what you are doing: `PI_SYNC_SETTINGS=1 ./sync.sh`, then install
+> herdr and `herdr integration install <agent>`, then `/reload` inside pi.
+
 Most of this is copied from [amosblomqvist/pi-config](https://github.com/amosblomqvist/pi-config)
 and its sibling repos — see `UPSTREAM.md` for what came from where and what was changed locally.
 
@@ -10,8 +18,11 @@ and its sibling repos — see `UPSTREAM.md` for what came from where and what wa
 
 ```bash
 git clone <this repo> ~/Documents/pi-setup
-~/Documents/pi-setup/sync.sh
+PI_SYNC_SETTINGS=1 ~/Documents/pi-setup/sync.sh
 ```
+
+(Without `PI_SYNC_SETTINGS=1`, `settings.json` — the model choices and observational-memory config —
+is deliberately left alone, so the machine keeps pi's own defaults. See [`SETUP.md`](SETUP.md).)
 
 `sync.sh` copies into `~/.pi/agent`, installs extension npm deps, creates the `pdf-reader` venv
 with `uv`, and downloads the Playwright browser **with the locally installed
