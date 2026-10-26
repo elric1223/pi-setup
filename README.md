@@ -162,6 +162,14 @@ Four things to know before adding more `cli: claude` agents:
   `hasTrustDialogAccepted` per project is the field that decides this.
 - **The child's Claude transcript is copied** into `~/.pi/agent/sessions/claude-code/`, and its id is
   returned as `claudeSessionId` — so each cross-harness child leaves a durable, resumable record.
+- **A `cli:` child is told to ask in plain text**, not with the interactive question tool (see the
+  body of `agents/claude-worker.md`). A Claude child that reaches for `AskUserQuestion` waits on a
+  dialog nobody answers: it never stops, so the Stop hook never fires, no sentinel is written and its
+  turn produces no result — the parent sees only that it is blocked. A question written as the final
+  message instead ends the turn normally and arrives as the child's ordinary result, which the
+  orchestrator can then answer and re-spawn with. The rule is prompt-level only, since the child runs
+  with `--dangerously-skip-permissions`; blocking remains available on purpose via `interactive: true`,
+  where a human answers it in the pane.
 
 ### A blocked child no longer wedges the parent (fixed 2026-10-25)
 
@@ -172,12 +180,18 @@ not a theoretical one.
 
 Two escape hatches now exist, both opt-in so existing behaviour is unchanged without them:
 
-- **`timeoutMs`** — a hard deadline on the wait. Every spawn from `index.ts` passes it
-  (`timeout-seconds` in an agent's frontmatter, default 1800s / 30 min). On expiry the reason is
-  `timeout`, not a hang.
-- **`stopWhenBlocked`** — return as soon as herdr reports the pane's agent `blocked`, with the reason
+- **`timeoutMs`** — a hard deadline on the wait, from `timeout-seconds` in an agent's frontmatter.
+  It applies **by default only to `cli:` children**, because a CLI child that never signals completion
+  is the case with no other way out; a pi child signals both success and failure through its own
+  session files, so long work is legitimate and it gets a ceiling **only** if its agent sets
+  `timeout-seconds`. Default for `cli:` children: 1800s (30 min). On expiry the reason is `timeout`,
+  and **the child's result is not returned afterwards** — the pane stays open but nothing is watching
+  it, so treat the ceiling as a real limit on long runs, not a free retry.
+- **`stopWhenBlocked`** — stop waiting once herdr reports the pane's agent `blocked`, with reason
   `blocked`. Reads herdr's per-pane agent state (`herdr agent get`), which is **herdr-only**: tmux has
-  no equivalent, so it never triggers there.
+  no equivalent, so it never triggers there. Two consecutive `blocked` readings are required, sampled
+  every fourth tick, so detection takes **about 8 s** rather than being instant — the debounce stops a
+  single stale sample from abandoning a child that is actually working.
 
 Both outcomes are **reported, not killed**: the pane is deliberately left open, because a limit we
 imposed should not destroy work and a blocked child still holds the context needed to answer it. The

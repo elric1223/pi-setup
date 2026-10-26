@@ -1561,15 +1561,25 @@ async function watchSubagent(
   // omits `auto-exit` would be classed interactive and silently lose this
   // protection — verified 2026-10-25, it did.
   const stopWhenBlocked = !hasAskChannel && agentDefaults?.interactive !== true;
+
+  // The deadline is a safety net for the case that has no other way out: a CLI
+  // child that never signals completion. A pi child signals both success and
+  // failure through its own session files, so long work is legitimate and it
+  // gets no ceiling unless its agent asks for one with `timeout-seconds`.
+  //
+  // Applying the default to pi children was wrong, and a review caught it: a pi
+  // child running longer than the ceiling returned `timeout` and its result was
+  // lost, where before this change the parent simply waited for it.
+  const explicitTimeoutSeconds = agentDefaults?.timeoutSeconds;
   const timeoutSeconds =
-    agentDefaults?.timeoutSeconds ?? DEFAULT_SUBAGENT_TIMEOUT_SECONDS;
+    explicitTimeoutSeconds ?? (hasAskChannel ? undefined : DEFAULT_SUBAGENT_TIMEOUT_SECONDS);
 
   try {
     const result = await pollForExit(surface, AbortSignal.any([signal, getModuleAbortSignal()]), {
       interval: 1000,
       sessionFile,
       sentinelFile: running.sentinelFile,
-      timeoutMs: timeoutSeconds * 1000,
+      timeoutMs: timeoutSeconds == null ? undefined : timeoutSeconds * 1000,
       stopWhenBlocked,
       onTick() {
         observeRunningSubagent(running);
