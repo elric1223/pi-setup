@@ -2,7 +2,7 @@
   "lastChangelogVersion": "1.4.0",
   "defaultProvider": "openrouter",
   "defaultModel": "deepseek/deepseek-v4.1-flash",
-  "hideThinkingBlock": true,
+  "hideThinkingBlock": false,
   "observational-memory": {
     "models": {
       "observer": {
