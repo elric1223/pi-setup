@@ -120,6 +120,7 @@ You are a specialized agent that does X...
 | `cwd` | string | Default working directory |
 | `disable-model-invocation` | boolean | Hide from `subagents_list`; still spawnable by explicit name |
 | `cli` | string | `claude` runs the agent via the Claude Code CLI instead of pi |
+| `claude-permissions` | string | `readonly` (only with `cli: claude`) replaces `--dangerously-skip-permissions` with an explicit allowlist: read tools plus `git diff/log/show/status`, MCP connectors disabled. Verified 2026-10-25 — `git log` runs, writes are denied. The allow rules are **prefix** rules, so the agent must run bare `git log` in its own working directory; `git -C <path> log` is denied |
 
 ### session-mode
 
