@@ -334,6 +334,55 @@ function herdrCloseSurface(surface: string): void {
   herdrExec(["pane", "close", surface]);
 }
 
+// ── herdr agent state ──
+
+export type AgentStatus = "idle" | "working" | "blocked" | "done" | "unknown";
+
+export interface AgentState {
+  status: AgentStatus;
+  /** Which harness herdr thinks it is ("pi", "claude", …). */
+  agent?: string;
+  /** Terminal title — herdr keeps it in sync with what the agent is showing. */
+  detail?: string;
+}
+
+/**
+ * herdr's own view of the agent occupying a pane.
+ *
+ * This is exactly the signal file- and screen-based completion detection cannot
+ * see. An agent waiting on a question is `blocked`, not stopped: it never
+ * writes a completion marker and never prints the sentinel, so polling files
+ * cannot tell "still working" apart from "waiting for a human" — and the second
+ * case waits forever. herdr already distinguishes them per pane.
+ *
+ * herdr-only (the tmux backend has no equivalent). Returns null — never throws —
+ * when unavailable, when no agent is detected in the pane, or on any error.
+ * Callers must read null as "unknown", never as a state.
+ */
+export async function getAgentState(surface: string): Promise<AgentState | null> {
+  if (getMuxBackend() !== "herdr") return null;
+
+  try {
+    const { stdout } = await execFileAsync("herdr", ["agent", "get", surface], {
+      encoding: "utf8",
+    });
+    const agent = JSON.parse(stdout)?.result?.agent;
+    const status = agent?.agent_status;
+    if (typeof status !== "string") return null;
+
+    return {
+      status: status as AgentStatus,
+      ...(typeof agent?.agent === "string" ? { agent: agent.agent } : {}),
+      ...(typeof agent?.terminal_title_stripped === "string" && agent.terminal_title_stripped !== ""
+        ? { detail: agent.terminal_title_stripped }
+        : {}),
+    };
+  } catch {
+    // No agent in the pane yet, pane gone, herdr unavailable — all "unknown".
+    return null;
+  }
+}
+
 // ── Surface primitives ──
 
 /**
@@ -447,11 +496,13 @@ export function closeSurface(surface: string): void {
 
 export interface PollResult {
   /** How the subagent exited */
-  reason: "done" | "sentinel" | "error";
+  reason: "done" | "sentinel" | "error" | "blocked" | "timeout";
   /** Shell exit code (from sentinel). 0 for file-based exits. */
   exitCode: number;
   /** Error message if reason is "error" (auto-retry exhausted, provider overload, etc.) */
   errorMessage?: string;
+  /** What herdr saw, when reason is "blocked". */
+  blocked?: AgentState;
 }
 
 /**
@@ -480,6 +531,15 @@ export const __pollForExitTest__ = { interpretExitSidecar };
  * Poll until the subagent exits. Checks for a `.exit` sidecar file first
  * (written by the error path), falling back to the terminal sentinel for
  * clean-completion and crash detection.
+ *
+ * Two ways out exist for a child that never signals completion, both opt-in so
+ * existing behaviour is unchanged when they are not passed:
+ *
+ *  - `stopWhenBlocked` — return as soon as herdr reports the pane's agent
+ *    `blocked`. A blocked agent has not stopped, so no completion signal is
+ *    coming; without this the caller waits forever (verified 2026-10-25).
+ *  - `timeoutMs` — a hard ceiling, so "still running" is a returned outcome
+ *    rather than a hang, whatever the cause.
  */
 export async function pollForExit(
   surface: string,
@@ -489,9 +549,26 @@ export async function pollForExit(
     sessionFile?: string;
     sentinelFile?: string;
     onTick?: (elapsed: number) => void;
+    /** Hard ceiling on the wait. Omit to wait indefinitely (legacy behaviour). */
+    timeoutMs?: number;
+    /**
+     * Treat `blocked` as terminal. Only for children with no in-band way to ask
+     * the parent: a pi child answers `ask_question` through its `.ask` file, so
+     * for it blocked is a normal intermediate state and this must stay off.
+     */
+    stopWhenBlocked?: boolean;
+    /** Poll herdr agent state every N ticks (default 4, i.e. ~4s at interval 1000). */
+    statusEveryTicks?: number;
+    /** Consecutive `blocked` samples before giving up (default 2), so one stale
+     *  sample cannot abandon a child that is actually working. */
+    blockedSamples?: number;
   },
 ): Promise<PollResult> {
   const start = Date.now();
+  const statusEveryTicks = Math.max(1, options.statusEveryTicks ?? 4);
+  const blockedSamplesNeeded = Math.max(1, options.blockedSamples ?? 2);
+  let blockedSeen = 0;
+  let tick = 0;
 
   for (;;) {
     if (signal.aborted) {
@@ -542,6 +619,25 @@ export async function pollForExit(
 
     const elapsed = Math.floor((Date.now() - start) / 1000);
     options.onTick?.(elapsed);
+
+    if (options.timeoutMs != null && Date.now() - start >= options.timeoutMs) {
+      return { reason: "timeout", exitCode: 0 };
+    }
+
+    if (options.stopWhenBlocked) {
+      tick += 1;
+      if (tick % statusEveryTicks === 0) {
+        const state = await getAgentState(surface);
+        if (state?.status === "blocked") {
+          blockedSeen += 1;
+          if (blockedSeen >= blockedSamplesNeeded) {
+            return { reason: "blocked", exitCode: 0, blocked: state };
+          }
+        } else {
+          blockedSeen = 0;
+        }
+      }
+    }
 
     await new Promise<void>((resolve, reject) => {
       if (signal.aborted) return reject(new Error("Aborted"));

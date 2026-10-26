@@ -134,6 +134,11 @@ interface AgentDefaults {
   sessionMode?: SubagentSessionMode;
   cwd?: string;
   cli?: string;
+  /**
+   * Ceiling on this agent's runtime in seconds, from `timeout-seconds`. A safety
+   * net against a child that never signals completion, not a working limit.
+   */
+  timeoutSeconds?: number;
   body?: string;
   disableModelInvocation?: boolean;
 }
@@ -163,6 +168,14 @@ const SPAWNING_TOOLS = [
 
 /** Built-in tools pi provides natively — no extension needs to be loaded. */
 const BUILTIN_TOOLS = new Set(["read", "write", "edit", "bash", "grep", "find", "ls"]);
+
+/**
+ * Default ceiling on a subagent's runtime, in seconds, when its frontmatter sets
+ * no `timeout-seconds`. A safety net against a child that never signals
+ * completion — a blocked agent writes no sentinel and prints none — not a
+ * working limit, so it is deliberately generous.
+ */
+const DEFAULT_SUBAGENT_TIMEOUT_SECONDS = 1800;
 
 /** Resolve the global agent config directory, respecting PI_CODING_AGENT_DIR. */
 function getAgentConfigDir(): string {
@@ -264,6 +277,13 @@ function parseCommaList(value: string | undefined): string[] | undefined {
   return list.length > 0 ? list : undefined;
 }
 
+/** Parse a frontmatter value expected to be a number of seconds (or undefined). */
+function parseOptionalNumber(value: string | undefined): number | undefined {
+  if (value == null) return undefined;
+  const parsed = Number(value.trim());
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function parseSessionMode(value: string | undefined): SubagentSessionMode | undefined {
   if (value === "standalone" || value === "lineage-only" || value === "fork") {
     return value;
@@ -298,6 +318,7 @@ function parseAgentDefinition(content: string, fallbackName: string): AgentDefin
     sessionMode: parseSessionMode(getFrontmatterValue(frontmatter, "session-mode")),
     cwd: getFrontmatterValue(frontmatter, "cwd"),
     cli: getFrontmatterValue(frontmatter, "cli"),
+    timeoutSeconds: parseOptionalNumber(getFrontmatterValue(frontmatter, "timeout-seconds")),
     body: body || undefined,
     disableModelInvocation:
       getFrontmatterValue(frontmatter, "disable-model-invocation")?.toLowerCase() === "true",
@@ -1527,11 +1548,29 @@ async function watchSubagent(
 ): Promise<SubagentResult> {
   const { name, task, surface, startTime, sessionFile } = running;
 
+  // A pi child can ask the parent in-band (`ask_question` → `.ask` file), so for
+  // it `blocked` is a normal intermediate state and must not end the wait. A CLI
+  // child has no such channel: blocked means it waits forever, and herdr's agent
+  // state is the only thing that knows the difference.
+  const hasAskChannel = running.cli == null || running.cli === "pi";
+  const agentDefaults = running.agent ? loadAgentDefaults(running.agent) : null;
+
+  // For a CLI child, only an *explicit* `interactive: true` should keep the wait
+  // alive on blocked. Deliberately not `running.interactive`: its default is
+  // derived from `auto-exit`, which is a pi-path concept, so a `cli:` agent that
+  // omits `auto-exit` would be classed interactive and silently lose this
+  // protection — verified 2026-10-25, it did.
+  const stopWhenBlocked = !hasAskChannel && agentDefaults?.interactive !== true;
+  const timeoutSeconds =
+    agentDefaults?.timeoutSeconds ?? DEFAULT_SUBAGENT_TIMEOUT_SECONDS;
+
   try {
     const result = await pollForExit(surface, AbortSignal.any([signal, getModuleAbortSignal()]), {
       interval: 1000,
       sessionFile,
       sentinelFile: running.sentinelFile,
+      timeoutMs: timeoutSeconds * 1000,
+      stopWhenBlocked,
       onTick() {
         observeRunningSubagent(running);
         deliverPendingQuestion(running);
@@ -1539,6 +1578,44 @@ async function watchSubagent(
     });
 
     const elapsed = Math.floor((Date.now() - startTime) / 1000);
+
+    // Neither finished nor crashed. Reported, and the pane deliberately left
+    // alone: a limit we imposed should not destroy work, and a blocked child
+    // still holds the context needed to answer its question.
+    if (result.reason === "blocked" || result.reason === "timeout") {
+      runningSubagents.delete(running.id);
+
+      if (result.reason === "blocked") {
+        const who = result.blocked?.agent ?? "The subagent";
+        const showing = result.blocked?.detail
+          ? ` It is showing: "${result.blocked.detail}".`
+          : "";
+        return {
+          name,
+          task,
+          sessionFile,
+          summary:
+            `Subagent ${name} is BLOCKED after ${formatElapsed(elapsed)} and did not finish. ` +
+            `${who} is waiting on a question or approval that nothing answered, so no result was produced.${showing} ` +
+            `Its pane is left open (${surface}) — answer it there, or re-spawn with the decision already made.`,
+          exitCode: 1,
+          elapsed,
+          error: "blocked",
+        };
+      }
+
+      return {
+        name,
+        task,
+        sessionFile,
+        summary:
+          `Subagent ${name} did not finish within ${formatElapsed(elapsed)} (timeout) and was not stopped. ` +
+          `It may still be working; its pane is left open (${surface}).`,
+        exitCode: 1,
+        elapsed,
+        error: "timeout",
+      };
+    }
 
     if (running.cli === "claude") {
       // Claude Code result extraction

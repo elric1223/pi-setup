@@ -13,7 +13,7 @@
 | `skills/web-debug/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
 | `skills/youtube-transcript/` | amosblomqvist/pi-config | cloned 2026-10-25 | no |
 | `extensions/observational-memory/` | amosblomqvist/pi-observational-memory | cloned 2026-10-25, v0.1.0 | **yes** — `models.observerFallback` + one retry on non-zero exit, see README |
-| `extensions/subagents/` | amosblomqvist/pi-interactive-subagents | cloned 2026-10-25, v3.7.2 | **yes** — herdr backend added to the surface layer; see README "Subagents (herdr port)" |
+| `extensions/subagents/` | amosblomqvist/pi-interactive-subagents | cloned 2026-10-25, v3.7.2 | **yes** — herdr backend added to the surface layer; bounded + blocked-aware exit polling (`timeoutMs`, `stopWhenBlocked`) and the `timeout-seconds` agent field added after a real orchestrator wedge; locally added `test/integration/poll-exit.test.ts` and `agents/claude-worker.md` (first `cli: claude` agent). See README "Subagents (herdr port)" and "Cross-harness: the Claude Code path" |
 
 Upstream is a "copy the pieces you want" repo, not a package — it has no releases to track.
 `pi-interactive-subagents` was read and **not** vendored initially because it was tmux-only; it is

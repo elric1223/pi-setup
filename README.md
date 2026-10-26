@@ -163,6 +163,37 @@ Four things to know before adding more `cli: claude` agents:
 - **The child's Claude transcript is copied** into `~/.pi/agent/sessions/claude-code/`, and its id is
   returned as `claudeSessionId` — so each cross-harness child leaves a durable, resumable record.
 
+### A blocked child no longer wedges the parent (fixed 2026-10-25)
+
+A `cli:` child that waits on a question shows as **`blocked`, not stopped**: Claude Code's Stop hook
+never fires, so no sentinel is written and no screen marker is printed. `pollForExit` used to poll
+files and the screen with **no deadline**, so the parent waited forever — a real orchestrator wedge,
+not a theoretical one.
+
+Two escape hatches now exist, both opt-in so existing behaviour is unchanged without them:
+
+- **`timeoutMs`** — a hard deadline on the wait. Every spawn from `index.ts` passes it
+  (`timeout-seconds` in an agent's frontmatter, default 1800s / 30 min). On expiry the reason is
+  `timeout`, not a hang.
+- **`stopWhenBlocked`** — return as soon as herdr reports the pane's agent `blocked`, with the reason
+  `blocked`. Reads herdr's per-pane agent state (`herdr agent get`), which is **herdr-only**: tmux has
+  no equivalent, so it never triggers there.
+
+Both outcomes are **reported, not killed**: the pane is deliberately left open, because a limit we
+imposed should not destroy work and a blocked child still holds the context needed to answer it. The
+result summary names the pane so the caller can go and answer it.
+
+`stopWhenBlocked` is set only for children with no in-band way to ask the parent. A **pi** child
+answers `ask_question` through its `.ask` file, so for it blocked is a normal intermediate state and
+the flag must stay off — otherwise the ask_question flow would break. Only an *explicit*
+`interactive: true` in frontmatter also keeps the wait alive for a CLI child; the older
+`interactive` default is derived from `auto-exit`, which is a pi-path concept and would otherwise
+have disabled this for every `cli:` agent (it did, until it was caught).
+
+Regression coverage: `test/integration/poll-exit.test.ts` (4 tests, no LLM calls — the blocked cases
+fake agent state with `herdr pane report-agent`). Run with
+`node --test --test-concurrency=1 test/integration/poll-exit.test.ts`.
+
 ## Web search
 
 `web_search` comes from the **`pi-web-search` package**, not an extension folder:
